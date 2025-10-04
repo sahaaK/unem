@@ -924,16 +924,21 @@
                         <span class="question-number mr-3">21.</span>
                         <h3 class="text-lg font-medium text-gray-200">Haddii aad rabto, faallo ama talo soo qor (optional)</h3>
                     </div>
-                    <textarea class="other-input w-full px-4 py-4 rounded-lg text-white placeholder-gray-400 h-32 resize-none" placeholder="Qor faallooyinkaada ama talooyinkaada halkaan..."></textarea>
+                    <textarea name="comments" class="other-input w-full px-4 py-4 rounded-lg text-white placeholder-gray-400 h-32 resize-none" placeholder="Qor faallooyinkaada ama talooyinkaada halkaan..."></textarea>
                 </div>
             </section>
 
             <!-- Submit Button -->
             <div class="text-center" data-aos="fade-up" data-aos-delay="500">
-                <button type="submit" class="submit-btn px-12 py-4 rounded-full text-white font-bold text-lg">
+                <button id="finishButton" type="submit" disabled aria-disabled="true" class="submit-btn px-12 py-4 rounded-full text-white font-bold text-lg opacity-50 cursor-not-allowed">
                     <i data-feather="send" class="w-5 h-5 inline mr-2"></i>
                     Finish
                 </button>
+
+                <!-- Inline message shown when user tries to tab to Finish before completing -->
+                <div id="incompleteMsg" role="alert" tabindex="-1" class="hidden mt-4 text-sm text-yellow-300">
+                    Fadlan ka jawaab dhammaan su'aalaha ka hor intaadan dhameystirin.
+                </div>
             </div>
         </form>
     </main>
@@ -975,22 +980,58 @@
         // Initialize Feather Icons
         feather.replace();
 
-        // Progress tracking
+        // Progress tracking and required checks
         let answeredQuestions = 0;
-        const totalQuestions = 21;
+        const requiredRadioNames = ['gender', 'age', 'year', 'faculty', 'employment', 'jobSearchDuration', 'unemploymentReason', 'confidence', 'businessIdea', 'emigration', 'emigrationReason', 'destination', 'returnHome', 'emigrationImpact', 'universitySupport', 'universityAction', 'governmentPolicy', 'syleadProgram', 'futureOutlook', 'wantToEmigrate'];
+
+        const finishBtn = document.getElementById('finishButton');
+        const incompleteMsg = document.getElementById('incompleteMsg');
+
+        function countAnswered() {
+            let count = 0;
+            requiredRadioNames.forEach(name => {
+                if (document.querySelector('input[name="' + name + '"]:checked')) count++;
+            });
+            return count;
+        }
+
+        function allAnswered() {
+            return countAnswered() === requiredRadioNames.length;
+        }
 
         function updateProgress() {
-            const progress = (answeredQuestions / totalQuestions) * 100;
+            answeredQuestions = countAnswered();
+            const progress = (answeredQuestions / requiredRadioNames.length) * 100;
             document.getElementById('progress-bar').style.width = `${progress}%`;
             document.getElementById('progress-text').textContent = `${Math.round(progress)}%`;
         }
 
-        // Handle "Other" option selections
+        function showIncompleteMessage() {
+            incompleteMsg.classList.remove('hidden');
+            incompleteMsg.classList.add('flex');
+            incompleteMsg.focus();
+            setTimeout(() => {
+                incompleteMsg.classList.add('hidden');
+                incompleteMsg.classList.remove('flex');
+            }, 3000);
+        }
+
+        function refreshState() {
+            updateProgress();
+            if (allAnswered()) {
+                finishBtn.disabled = false;
+                finishBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                finishBtn.setAttribute('aria-disabled', 'false');
+            } else {
+                finishBtn.disabled = true;
+                finishBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                finishBtn.setAttribute('aria-disabled', 'true');
+            }
+        }
+
+        // Show/hide "Other" inputs and refresh state on any change
         document.addEventListener('change', function(e) {
             if (e.target.type === 'radio') {
-                answeredQuestions = Math.min(answeredQuestions + 1, totalQuestions);
-                updateProgress();
-
                 // Show/hide other input fields
                 if (e.target.id === 'facultyOther' && e.target.checked) {
                     document.getElementById('facultyOtherInput').classList.remove('hidden');
@@ -1023,21 +1064,55 @@
                 }
             }
 
-            if (e.target.type === 'checkbox' || e.target.type === 'textarea') {
-                updateProgress();
+            // Update progress and button state for any change
+            refreshState();
+        });
+
+        // Prevent Tab from moving to finish when incomplete and show message instead
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab' && !allAnswered()) {
+                const form = document.getElementById('surveyForm');
+                // focusable elements inside the form (excluding disabled ones)
+                const focusables = Array.from(form.querySelectorAll('input, textarea, select, button, a[href], [tabindex]:not([tabindex="-1"])'))
+                    .filter(el => !el.disabled && el.offsetParent !== null);
+
+                const last = focusables[focusables.length - 1];
+                if (document.activeElement === last) {
+                    e.preventDefault();
+                    showIncompleteMessage();
+                }
             }
         });
 
-        // Form submission
+        // Prevent focusing finish button when incomplete (e.g., Tab into it)
+        finishBtn.addEventListener('focus', function(e) {
+            if (!allAnswered()) {
+                // briefly blur the button so it doesn't keep focus
+                setTimeout(() => finishBtn.blur(), 0);
+                showIncompleteMessage();
+                // move focus to the first unanswered radio input if available
+                const firstUnanswered = requiredRadioNames.find(name => !document.querySelector('input[name="' + name + '"]:checked'));
+                if (firstUnanswered) {
+                    const inputs = document.querySelectorAll('input[name="' + firstUnanswered + '"]');
+                    if (inputs.length) inputs[0].focus();
+                }
+            }
+        });
+
+        // Form submission: double-check completeness before sending
         document.getElementById('surveyForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            
+            if (!allAnswered()) {
+                showIncompleteMessage();
+                return;
+            }
+
             const formData = new FormData(e.target);
             const data = {};
-            
+
             // Collect all radio button answers
-            const radioNames = ['gender', 'age', 'year', 'faculty', 'employment', 'jobSearchDuration', 'unemploymentReason', 'confidence', 'businessIdea', 'emigration', 'emigrationReason', 'destination', 'returnHome', 'emigrationImpact', 'universitySupport', 'universityAction', 'governmentPolicy', 'syleadProgram', 'futureOutlook', 'wantToEmigrate'];
-            
+            const radioNames = requiredRadioNames.slice();
+
             radioNames.forEach(name => {
                 const value = formData.get(name);
                 if (value === 'Other') {
@@ -1051,7 +1126,7 @@
 
             // Add optional text
             data.comments = formData.get('comments') || '';
-            
+
             // Add timestamp
             data.timestamp = new Date().toISOString();
 
@@ -1065,16 +1140,21 @@
             }
         });
 
+        
+
         function closeModal() {
             document.getElementById('successModal').classList.add('hidden');
             document.getElementById('successModal').classList.remove('flex');
             // Reset form
             document.getElementById('surveyForm').reset();
-            answeredQuestions = 0;
-            updateProgress();
             // Hide all other inputs
             document.querySelectorAll('[id$="OtherInput"]').forEach(input => input.classList.add('hidden'));
+            // Reset progress and button state
+            refreshState();
         }
+
+        // Initial state on load
+        refreshState();
     </script>
 </body>
 </html>
